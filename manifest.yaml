@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mathpile-training
+  labels:
+    job-name: mathpile-training
+spec:
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        job-name: mathpile-training
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: trainer
+        image: atamb123/mathstrain:latest
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: huggingface-secrets
+                key: hf_token
+        resources:
+          requests:
+            nvidia.com/gpu: 8
+            cpu: "64"
+            memory: "1000Gi"
+          limits:
+            nvidia.com/gpu: 8
+            cpu: "64"
+            memory: "1000Gi"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        - name: shm-volume
+          mountPath: /dev/shm
+      volumes:
+      - name: data-volume
+        emptyDir: {}
+      - name: shm-volume
+        emptyDir:
+          medium: Memory
+          sizeLimit: "80Gi"
