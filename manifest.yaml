@@ -7,6 +7,7 @@ metadata:
 spec:
   completions: 1
   parallelism: 1
+  completionMode: Indexed  # Add this from reference
   template:
     metadata:
       labels:
@@ -16,6 +17,9 @@ spec:
       containers:
       - name: trainer
         image: atamb123/mathstrain:latest
+        command: ["torchrun", "--standalone", "--nproc_per_node", "8", "train.py"]  # Add this from reference
+        ports: 
+        - containerPort: 29500
         env:
           - name: HF_TOKEN
             valueFrom:
@@ -25,11 +29,13 @@ spec:
         resources:
           requests:
             nvidia.com/gpu: 8
-            cpu: "64"
+            nvidia.com/hostdev: 8
+            cpu: "32"
             memory: "1000Gi"
           limits:
             nvidia.com/gpu: 8
-            cpu: "64"
+            nvidia.com/hostdev: 8
+            cpu: "32"
             memory: "1000Gi"
         volumeMounts:
         - name: data-volume

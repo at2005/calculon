@@ -13,8 +13,13 @@ RUN pip install --upgrade pip && \
 
 RUN apt-get update && apt-get install -y parallel gzip findutils
 
+COPY ./data2.pt .
+
 # Copy your code (including entrypoint script)
-COPY . .
+COPY ./*.py .
+COPY ./*.sh .
+COPY ./*.txt .
+COPY ./*.json .
 
 # Make sure the entrypoint script is executable
 RUN chmod +x /app/entrypoint.sh
@@ -24,4 +29,5 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Example default command:
 #   --nproc_per_node=1 means "1 process per node (GPU)". Adjust as needed.
-CMD ["torchrun", "--nproc_per_node=8", "train.py"]
+# CMD ["torchrun", "--standalone", "--nnodes=1", "--nproc_per_node=8", "train.py"]
+# CMD ["python", "train.py"]

@@ -6,8 +6,7 @@ import tqdm
 from tokenizers import ByteLevelBPETokenizer
 from common import seq_len, vocab_size
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
+import torch.distributed as dist
 
 base_dir = "/data/MathPile/train"
 
@@ -21,6 +20,7 @@ def process_file(file_path):
                 texts.append(json_loaded["text"] + "<EOS>")
     return texts
 
+
 def data_iterator(base_dir):
     file_paths = []
     for source in os.listdir(base_dir):
@@ -31,13 +31,11 @@ def data_iterator(base_dir):
             file_path = os.path.join(source_path, json_file)
             file_paths.append(file_path)
 
-    with ProcessPoolExecutor() as executor:
-        futures = [executor.submit(process_file, fp) for fp in file_paths]
-        for future in as_completed(futures):
-            for text in future.result():
-                yield text
+    for fp in file_paths:
+        texts = process_file(fp)
+        for text in texts:
+            yield text
 
-    
 
 def train_tokeniser():
     data_gen = data_iterator(base_dir)
@@ -45,16 +43,14 @@ def train_tokeniser():
     tokeniser.train_from_iterator(
         data_gen,
         vocab_size=vocab_size,
-        special_tokens=["<EOS>", "<PAD>", "<BOS>", "<UNK>"]
+        special_tokens=["<EOS>", "<PAD>", "<BOS>", "<UNK>"],
     )
 
     tokeniser.save_model(".", "math_bpe")
 
+
 def encode_data():
-    tokeniser = ByteLevelBPETokenizer(
-        "math_bpe-vocab.json",
-        "math_bpe-merges.txt"
-    ) 
+    tokeniser = ByteLevelBPETokenizer("math_bpe-vocab.json", "math_bpe-merges.txt")
 
     batch_size = 20_000
     data_gen = data_iterator(base_dir)
@@ -72,7 +68,7 @@ def encode_data():
         encoded_batch = tokeniser.encode_batch(batch)
         for enc in encoded_batch:
             all_ids.append(enc.ids)
-    
+
     flat_ids = [token for sublist in all_ids for token in sublist]
     print("Finished processing. Writing to Tensor")
     data_tensor = torch.tensor(flat_ids, dtype=torch.uint16)
@@ -81,23 +77,29 @@ def encode_data():
     print(f"Saved tokenized data")
 
 
-class MathDataset(Dataset): 
+class MathDataset(Dataset):
     def __len__(self):
-        return len(self.data_tokens) - seq_len
+        # return len(self.data_tokens) - seq_len
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+        base_len = len(self.data_tokens) - seq_len
+        return (base_len // world_size) * world_size
 
     def __getitem__(self, index):
-        return self.data_tokens[index: index + seq_len], self.data_tokens[index + 1 : index + seq_len + 1]
+        return (
+            self.data_tokens[index : index + seq_len],
+            self.data_tokens[index + 1 : index + seq_len + 1],
+        )
 
     def __init__(self):
         try:
-            self.data_tokens = torch.load(os.path.join(base_dir, "data.pt")).to(torch.long)
-            self.tokeniser = ByteLevelBPETokenizer(
-                "math_bpe-vocab.json",
-                "math_bpe-merges.txt"
-            )
+            self.data_tokens = torch.load(os.path.join("data2.pt"))
 
-        except FileNotFoundError:
-            print("Train tokeniser first")
+            # self.tokeniser = ByteLevelBPETokenizer(
+            #     "math_bpe-vocab.json", "math_bpe-merges.txt"
+            # )
+
+        except Exception as e:
+            print(f"An error encountered while loading dataset: {e}")
 
 
 if __name__ == "__main__":
