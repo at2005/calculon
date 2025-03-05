@@ -16,10 +16,12 @@ RUN apt-get update && apt-get install -y parallel gzip findutils
 COPY ./data2.pt .
 
 # Copy your code (including entrypoint script)
+COPY ./checkpoint_7_200.pt .
 COPY ./*.py .
 COPY ./*.sh .
 COPY ./*.txt .
 COPY ./*.json .
+
 
 # Make sure the entrypoint script is executable
 RUN chmod +x /app/entrypoint.sh
