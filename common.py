@@ -1,2 +1,10 @@
 seq_len = 1024
 vocab_size = 25600
+dropout = 0.25
+dim = 1024
+global_batch_size = 2**20
+minibatch_size = 64
+BATCH_ITERS = global_batch_size // minibatch_size
+num_layers = 24
+policy_dim = 500
+USE_CHECKPOINT = False
