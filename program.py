@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 
 # inference time generation
-
+MAX_TOKENS_GROUP = 1000
 NUM_ITERS = 100
 NUM_STEPS = 200
 NUM_GRPO_ITERS = 10
@@ -29,7 +29,7 @@ def generate_group(transformer: Transformer, encoded_prompt: torch.Tensor):
     priors = []
     # token generation step, we now just output a bunch of tokens
     for t in range(num_tokens):
-        prior, token_to_pass = transformer(token_to_pass)
+        prior, token_to_pass = transformer(token_to_pass, output_programs=True)
         tokens = torch.cat([tokens, token_to_pass], dim=-2)
         priors.append(prior)
     priors = torch.stack(priors)
@@ -80,8 +80,13 @@ def prompt_sampler():
 
 
 # must also implement padding
-def encode_prompt(tokenizer) -> torch.Tensor:
-    pass
+def encode_prompt(tokenizer, prompt) -> torch.Tensor:
+    token_tensor = torch.empty(num_groups, group_size, MAX_TOKENS_GROUP, dim)
+    for group in range(len(prompt)):
+        for item in range(len(prompt[group])):
+            tokenised = tokenize_input(tokenizer, item)
+            token_tensor[group, item, :, :] = tokenised
+    return token_tensor
 
 
 def train_grpo():
@@ -100,8 +105,7 @@ def train_grpo():
             with torch.no_grad():
                 ref_priors, _ = generate_group(reference, encoded_prompt)
 
-            old_priors = new_priors
-            old_priors = old_priors.detach()
+            old_priors = new_priors.detach()
 
             for _grpo_iter in tqdm(range(NUM_GRPO_ITERS)):
                 new_priors, _ = generate_group(policy, encoded_prompt)

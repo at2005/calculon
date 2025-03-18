@@ -54,7 +54,6 @@ def main():
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         print(f"Process {rank} of {world_size} is initialized.")
-        dist.barrier()
     else:
         print("Distributed process group not initialized!")
         return
@@ -92,29 +91,32 @@ def main():
         start_step += 1
 
     model = model.to(device)
+    model.train()
 
-    ddp_model = DDP(
-        model,
+    compiled_model = torch.compile(model=model, mode="max-autotune", fullgraph=True)
+
+    print("Finished compiling model")
+
+    compiled_ddp_model = DDP(
+        compiled_model,
         device_ids=[device_id],
     )
 
-    compiled_ddp_model: nn.Module = torch.compile(
-        model=ddp_model, mode="max-autotune", fullgraph=True
-    )
-
     print("Model initialised. Starting to train")
-    compiled_ddp_model.train()
 
     optimizer = torch.optim.AdamW(
-        compiled_ddp_model.parameters(), lr=0.01, betas=(0.9, 0.95), weight_decay=0.1
+        compiled_ddp_model.parameters(),
+        lr=torch.tensor(0.01),
+        betas=(0.9, 0.95),
+        weight_decay=0.1,
     )
 
     linear_scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer, start_factor=3e-2, total_iters=1000
+        optimizer, start_factor=torch.tensor(3e-2), total_iters=1000
     )
 
     cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=(1000 * (num_steps - 1)), eta_min=0.001
+        optimizer, T_max=(1000 * (num_steps - 1)), eta_min=torch.tensor(0.001)
     )
 
     sequential_scheduler = torch.optim.lr_scheduler.SequentialLR(
@@ -148,7 +150,7 @@ def main():
 
                 for _ in tqdm(range(BATCH_ITERS)):
                     data, target = get_batch()
-                    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                         loss: torch.Tensor = compiled_ddp_model(data, target)
                     loss = loss / BATCH_ITERS
                     loss.backward()

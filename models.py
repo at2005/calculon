@@ -89,11 +89,8 @@ class FFN(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, dim * 4),
-            nn.GELU(),
             nn.Dropout(p=dropout),
-            nn.Linear(dim * 4, dim * 4),
             nn.GELU(),
-            nn.Dropout(p=dropout),
             nn.Linear(dim * 4, dim),
         )
 
@@ -127,17 +124,17 @@ class Transformer(nn.Module):
             self.embedding_table.weight[:vocab_size].copy_(self.to_logits.weight)
         self.norm = nn.LayerNorm(dim)
 
-        self.value_head = nn.Sequential(
-            *[TransformerBlock(dim) for _ in range(2)],
-            nn.Linear(dim, 1),
-            nn.Tanh(),
-        )
+        # self.value_head = nn.Sequential(
+        #     *[TransformerBlock(dim) for _ in range(2)],
+        #     nn.Linear(dim, 1),
+        #     nn.Tanh(),
+        # )
 
-        self.policy_head = nn.Sequential(
-            *[TransformerBlock(dim) for _ in range(2)],
-            nn.Linear(dim, policy_dim),
-            nn.Softmax(dim=-1),
-        )
+        # self.policy_head = nn.Sequential(
+        #     *[TransformerBlock(dim) for _ in range(2)],
+        #     nn.Linear(dim, policy_dim),
+        #     nn.Softmax(dim=-1),
+        # )
 
     def forward(self, x, target=None, rl=False, output_programs=False, temperature=1.0):
         B, T = x.shape
@@ -145,10 +142,10 @@ class Transformer(nn.Module):
         x = self.embedding_table(x)
         x = self.norm(self.layers(x))
 
-        if rl:
-            value = self.value_head(x)
-            policy = self.policy_head(x)
-            return policy, value
+        # if rl:
+        #     value = self.value_head(x)
+        #     policy = self.policy_head(x)
+        #     return policy, value
 
         if output_programs:
             vocab_logits = self.to_logits(x)  # (B, T, vocab_size)
