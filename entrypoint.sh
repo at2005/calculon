@@ -27,6 +27,9 @@ mv /app/data2.pt ./
 # export NCCL_DEBUG=INFO
 # export NCCL_DEBUG_SUBSYS=ALL
 export NCCL_ASYNC_ERROR_HANDLING=1
+sudo apt-get update
+sudo apt-get install build-essential
+
 
 # python /app/data.py
 

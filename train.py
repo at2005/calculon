@@ -2,17 +2,16 @@ import torch
 from torch import nn
 import torch.distributed
 import torch.nn.functional as F
-import os
-
 import torch.optim.lr_scheduler
-from data import MathDataset
-from tqdm import tqdm
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from common import dim, minibatch_size, BATCH_ITERS, num_layers, USE_CHECKPOINT
-import sys
-import random
 from models import Transformer
+from data import MathDataset
+import sys
+import os
+import random
+from tqdm import tqdm
 
 
 def load_checkpoint(model, checkpoint_file, device):
@@ -34,7 +33,9 @@ def load_checkpoint(model, checkpoint_file, device):
     return model, optimizer_state, scheduler_state, loss, epoch, step
 
 
-def save_checkpoint(model, optimizer, scheduler, epoch, step, loss, filename):
+def save_checkpoint(
+    model: nn.Module, optimizer, scheduler, epoch, step, loss, filename
+):
     checkpoint = {
         "epoch": epoch,
         "step": step,
@@ -134,7 +135,7 @@ def main():
             for i in tqdm(
                 range(start_step, 1000), disable=(rank != 0), file=sys.stdout
             ):
-                if rank == 0 and i % 100 == 0:
+                if rank == 0 and i % 10 == 0:
                     print("Average loss:", loss_avg)
                     save_checkpoint(
                         compiled_ddp_model,
@@ -148,7 +149,8 @@ def main():
 
                 optimizer.zero_grad()
 
-                for _ in tqdm(range(BATCH_ITERS)):
+                total_loss = 0
+                for _ in tqdm(range(BATCH_ITERS), disable=(rank != 0), file=sys.stdout):
                     data, target = get_batch()
                     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                         loss: torch.Tensor = compiled_ddp_model(data, target)
@@ -157,10 +159,11 @@ def main():
                     torch.nn.utils.clip_grad_norm_(
                         compiled_ddp_model.parameters(), max_norm=1.0
                     )
+                    total_loss += loss.item()
 
                 optimizer.step()
                 sequential_scheduler.step()
-                loss_avg = (counter * loss_avg + loss.item()) / (counter + 1)
+                loss_avg = (counter * loss_avg + total_loss) / (counter + 1)
                 counter += 1
 
         except Exception as e:

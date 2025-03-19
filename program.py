@@ -1,10 +1,7 @@
 from models import Transformer
 from common import dim, num_layers, vocab_size
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from inference import tokenize_input, get_tokenizer
-import numpy as np
 from tqdm import tqdm
 
 

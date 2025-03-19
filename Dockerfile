@@ -22,6 +22,8 @@ COPY ./*.sh .
 COPY ./*.txt .
 COPY ./*.json .
 
+RUN apt-get update && \
+    apt-get install -y build-essential
 
 # Make sure the entrypoint script is executable
 RUN chmod +x /app/entrypoint.sh

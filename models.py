@@ -1,4 +1,4 @@
-from common import dim, seq_len, dropout, vocab_size, policy_dim
+from common import dim, seq_len, dropout, vocab_size, policy_dim, dim_head, num_heads
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,8 +7,8 @@ import torch.nn.functional as F
 class RoPE(nn.Module):
     def __init__(self):
         super().__init__()
-        indices = torch.arange(dim // 2)
-        indices = -2 * (indices - 1) / dim
+        indices = torch.arange(dim_head // 2)
+        indices = -2 * (indices - 1) / dim_head
         thetas = 10_000**indices
         m = torch.arange(seq_len).view(-1, 1)
         vals = thetas * m  # (seq_len, d // 2)
@@ -28,17 +28,16 @@ class RoPESingleton:
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            cls._instance = RoPE(dim, seq_len)
+            cls._instance = RoPE()
         return cls._instance
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads=8, dim_head=16):
+    def __init__(self, dim):
         super().__init__()
-        self.heads = heads
-        self.dim_head = dim_head
-        self.to_qkv = nn.Linear(dim, dim_head * 3 * heads, bias=False)
-        self.to_out = nn.Linear(dim_head * heads, dim)
+        self.to_qkv = nn.Linear(dim, dim * 3, bias=False)
+        self.to_out = nn.Linear(dim, dim)
+        self.rope = RoPESingleton.get_instance()
         self.keys_cache = None
         self.values_cache = None
 
@@ -52,13 +51,12 @@ class Attention(nn.Module):
             3, dim=-1
         )  # shape is now (batch_size, seq_len, dim_head * heads) for q,k,v
 
-        q = q.view(batch_size, seq_len, self.heads, self.dim_head).transpose(1, 2)
-        k = k.view(batch_size, seq_len, self.heads, self.dim_head).transpose(1, 2)
-        v = v.view(batch_size, seq_len, self.heads, self.dim_head).transpose(1, 2)
+        q = q.view(batch_size, seq_len, num_heads, dim_head).transpose(1, 2)
+        k = k.view(batch_size, seq_len, num_heads, dim_head).transpose(1, 2)
+        v = v.view(batch_size, seq_len, num_heads, dim_head).transpose(1, 2)
 
-        rope = RoPESingleton.get_instance()
-        q = rope(q)
-        k = rope(k)
+        q = self.rope(q)
+        k = self.rope(k)
 
         if self.training:
             out = F.scaled_dot_product_attention(
@@ -116,12 +114,11 @@ class Transformer(nn.Module):
     def __init__(self, dim, num_layers):
         super().__init__()
         self.num_program_tokens = 200
-        self.embedding_table = nn.Embedding(vocab_size + self.num_program_tokens, dim)
+        self.embedding_table = nn.Embedding(vocab_size, dim)
         self.layers = nn.Sequential(*[TransformerBlock(dim) for _ in range(num_layers)])
-        self.to_logits = nn.Linear(dim, vocab_size)
-        self.program_head = nn.Linear(dim, self.num_program_tokens)
-        with torch.no_grad():
-            self.embedding_table.weight[:vocab_size].copy_(self.to_logits.weight)
+        self.to_logits = nn.Linear(dim, vocab_size, bias=False)
+        # self.program_head = nn.Linear(dim, self.num_program_tokens)
+        self.to_logits.weight = self.embedding_table.weight
         self.norm = nn.LayerNorm(dim)
 
         # self.value_head = nn.Sequential(
@@ -147,13 +144,13 @@ class Transformer(nn.Module):
         #     policy = self.policy_head(x)
         #     return policy, value
 
-        if output_programs:
-            vocab_logits = self.to_logits(x)  # (B, T, vocab_size)
-            program_logits = self.program_head(x)  # (B, T, num_program_tokens)
-            x = torch.cat([vocab_logits, program_logits], dim=-1)
-        else:
-            # we just do a normal projection for pretraining
-            x = self.to_logits(x)  # shape is (batch_size, seq_len, vocab_size)
+        # if output_programs:
+        #     vocab_logits = self.to_logits(x)  # (B, T, vocab_size)
+        #     program_logits = self.program_head(x)  # (B, T, num_program_tokens)
+        #     x = torch.cat([vocab_logits, program_logits], dim=-1)
+        # else:
+        # we just do a normal projection for pretraining
+        x = self.to_logits(x)  # shape is (batch_size, seq_len, vocab_size)
 
         if target is not None:
             x = x.view(B * T, vocab_size)
