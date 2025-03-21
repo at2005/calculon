@@ -16,9 +16,16 @@ class RoPE(nn.Module):
         self.register_buffer("sines", torch.sin(vals))
 
     def forward(self, x):
+        x_seq_len = x.shape[-2]
         output = torch.zeros_like(x)
-        output[..., ::2] = self.cosines * x[..., ::2] - self.sines * x[..., 1::2]
-        output[..., 1::2] = self.sines * x[..., ::2] + self.cosines * x[..., 1::2]
+        output[..., ::2] = (
+            self.cosines[:x_seq_len] * x[..., ::2]
+            - self.sines[:x_seq_len] * x[..., 1::2]
+        )
+        output[..., 1::2] = (
+            self.sines[:x_seq_len] * x[..., ::2]
+            + self.cosines[:x_seq_len] * x[..., 1::2]
+        )
         return output
 
 

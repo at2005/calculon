@@ -10,3 +10,4 @@ BATCH_ITERS = global_batch_size // minibatch_size
 num_layers = 24
 policy_dim = 500
 USE_CHECKPOINT = False
+num_program_tokens = 1000

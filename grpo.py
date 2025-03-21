@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 
 # inference time generation
-MAX_TOKENS_GROUP = 1000
+MAX_SEQ_LEN = 1000
 NUM_ITERS = 100
 NUM_STEPS = 200
 NUM_GRPO_ITERS = 10
@@ -51,20 +51,20 @@ def get_advantages(tokens) -> torch.Tensor:
         mean_reward = torch.mean(rewards, dim=-1)  # across each group
         reward_std = torch.std(rewards, dim=-1)  # across each group
         advantages = (rewards - mean_reward) / (reward_std + 1e-8)  # get (B, G)
-        advantages = advantages.unsqueeze(-1).unsqueeze(-1)  # (B, G, 1, 1)
+        advantages = advantages.unsqueeze(-1)  # (B, G, 1)
         return advantages
 
 
-def grpo_loss(advantages, new_priors, old_priors, reference_priors):
+def grpo_loss(advantages, new_priors, old_priors, reference_priors, token_ids):
     # new priors are of shape (B, G, T, V)
-    ratio = new_priors / old_priors
+    ratio = new_priors[:, :, token_ids, :] / old_priors[:, :, token_ids, :]
     min_clipped_advantage = torch.min(
-        advantages * ratio,  # B, G, 1, 1 *  B, G, T, V checks out
+        advantages * ratio,  # B, G, 1 *  B, G, T checks out
         torch.clip(ratio, 1 - epsilon, 1 + epsilon) * advantages,
     )
 
-    ref_ratio = reference_priors / new_priors
-    kl_loss = ref_ratio - torch.log(ref_ratio) - 1.0  # B, G, T, V
+    ref_ratio = reference_priors[:, :, token_ids, :] / new_priors[:, :, token_ids, :]
+    kl_loss = ref_ratio - torch.log(ref_ratio) - 1.0  # B, G, T, 1
     objective: torch.Tensor = min_clipped_advantage - beta * kl_loss
 
     # mean across T, across G, and B
@@ -72,13 +72,9 @@ def grpo_loss(advantages, new_priors, old_priors, reference_priors):
     return loss
 
 
-def prompt_sampler():
-    pass
-
-
 # must also implement padding
 def encode_prompt(tokenizer, prompt) -> torch.Tensor:
-    token_tensor = torch.empty(num_groups, group_size, MAX_TOKENS_GROUP, dim)
+    token_tensor = torch.empty(num_groups, group_size, MAX_SEQ_LEN, dim)
     for group in range(len(prompt)):
         for item in range(len(prompt[group])):
             tokenised = tokenize_input(tokenizer, item)
@@ -86,7 +82,7 @@ def encode_prompt(tokenizer, prompt) -> torch.Tensor:
     return token_tensor
 
 
-def train_grpo():
+def train_grpo_custom():
     policy = Transformer(dim=dim, num_layers=num_layers)
     optimizer = torch.optim.AdamW(policy.parameters(), lr=lr, betas=(0.9, 0.95))
     tokenizer = get_tokenizer()
@@ -94,6 +90,10 @@ def train_grpo():
         reference = Transformer(dim=dim, num_layers=num_layers)
         reference.load_state_dict(policy.state_dict())
         for _j in tqdm(range(NUM_STEPS)):
+
+            def prompt_sampler():
+                return ""
+
             prompt_sample = prompt_sampler()  # B, G, T_variable
             encoded_prompt = encode_prompt(tokenizer, prompt_sample)  # B, G, T_fixed
             new_priors, tokens = generate_group(policy, encoded_prompt)

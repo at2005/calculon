@@ -92,7 +92,13 @@ class MathDataset(Dataset):
 
     def __init__(self):
         try:
-            self.data_tokens = torch.load(os.path.join("data2.pt"))
+            data_tokens_mathpile = torch.load(os.path.join("data2.pt"))
+            # data_tokens_gs8mk = torch.load(os.path.join("gs8mk_dataset.pt"))
+            # data_tokens_math = torch.load(os.path.join("math_dataset.pt"))
+            self.data_tokens = data_tokens_mathpile
+            # self.data_tokens = torch.cat(
+            # [data_tokens_mathpile], dim=0
+            # )
 
             # self.tokeniser = ByteLevelBPETokenizer(
             #     "math_bpe-vocab.json", "math_bpe-merges.txt"
